@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScragVAE Cover Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --accent: #7c6ff7;
+      --accent2: #a78bfa;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --border: #2d3349;
+      --success: #34d399;
+      --error: #f87171;
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 780px;
+    }
+
+    header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p {
+      margin-top: .35rem;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .grid { display: grid; gap: 1rem; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+    @media (max-width: 560px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      font-size: .82rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: .35rem;
+    }
+
+    label span.req { color: var(--error); }
+    label span.opt { color: var(--muted); font-style: italic; }
+
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: .9rem;
+      padding: .55rem .75rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    textarea { resize: vertical; min-height: 70px; }
+
+    .file-drop {
+      position: relative;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--accent);
+      background: rgba(124, 111, 247, .07);
+    }
+
+    .file-drop input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .file-drop .icon { font-size: 1.6rem; }
+    .file-drop .label { font-size: .85rem; color: var(--muted); margin-top: .3rem; }
+    .file-drop .name { font-size: .85rem; color: var(--accent2); margin-top: .25rem; font-weight: 500; }
+
+    .badge {
+      display: inline-block;
+      font-size: .72rem;
+      padding: .15rem .55rem;
+      border-radius: 999px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      vertical-align: middle;
+      margin-left: .4rem;
+    }
+
+    .badge-opt { background: rgba(139, 146, 164, .15); color: var(--muted); }
+    .badge-req { background: rgba(248, 113, 113, .15); color: var(--error); }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: .85rem;
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+
+    button[type="submit"]:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    button[type="submit"]:not(:disabled):hover { opacity: .9; transform: translateY(-1px); }
+
+    /* Status panel */
+    #status-panel {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    #status-panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 1rem;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: .75rem;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-queued   { background: var(--muted); }
+    .dot-running  { background: #fbbf24; animation: pulse 1.2s infinite; }
+    .dot-done     { background: var(--success); }
+    .dot-failed   { background: var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+
+    .status-text { font-size: .95rem; }
+
+    .progress-note { font-size: .82rem; color: var(--muted); }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      margin-top: .75rem;
+      padding: .65rem 1.4rem;
+      background: var(--success);
+      color: #0f2217;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: .95rem;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+
+    .download-btn:hover { opacity: .85; }
+
+    .error-box {
+      background: rgba(248, 113, 113, .1);
+      border: 1px solid rgba(248, 113, 113, .3);
+      border-radius: 8px;
+      padding: .85rem 1rem;
+      font-size: .85rem;
+      color: var(--error);
+      margin-top: .75rem;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    #job-id-label {
+      font-size: .78rem;
+      color: var(--muted);
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>ScragVAE Cover Generator</h1>
+    <p>Upload pre-separated stems, tune the generation parameters, and download your instrumental cover.</p>
+  </header>
+
+  <form id="cover-form" enctype="multipart/form-data">
+
+    <!-- ── Stems ── -->
+    <section>
+      <h2>Audio Stems</h2>
+      <div class="grid grid-2">
+
+        <div>
+          <label>Instrumental Stem <span class="req">*</span></label>
+          <div class="file-drop" id="drop-instr">
+            <input type="file" name="instrumental_stem" id="instr-input" accept="audio/*" required />
+            <div class="icon">🎵</div>
+            <div class="label">Drag &amp; drop or click to upload</div>
+            <div class="name" id="instr-name">No file selected</div>
+          </div>
+          <small style="color:var(--muted);font-size:.76rem;margin-top:.3rem;display:block">
+            Mel-Band RoFormer instrumental (cover source)
+          </small>
+        </div>
+
+        <div>
+          <label>Bass Stem <span class="badge badge-opt">optional</span></label>
+          <div class="file-drop" id="drop-bass">
+            <input type="file" name="bass_stem" id="bass-input" accept="audio/*" />
+            <div class="icon">🎸</div>
+            <div class="label">Drag &amp; drop or click to upload</div>
+            <div class="name" id="bass-name">No file — hints skipped</div>
+          </div>
+          <small style="color:var(--muted);font-size:.76rem;margin-top:.3rem;display:block">
+            Demucs bass stem for chord/harmony hints
+          </small>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── Prompt ── -->
+    <section>
+      <h2>Prompt</h2>
+      <div class="grid">
+        <div>
+          <label>Caption / Style Prompt</label>
+          <textarea name="captions" rows="3">modern electronic pop, bright synth arpeggios, punchy drums, deep sub bass, shimmering pads, polished production</textarea>
+        </div>
+        <div>
+          <label>Lyrics</label>
+          <textarea name="lyrics" rows="2">[Instrumental]</textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Track Meta ── -->
+    <section>
+      <h2>Track Metadata</h2>
+      <div class="grid grid-3">
+        <div>
+          <label>BPM</label>
+          <input type="number" name="bpm" value="100" min="40" max="300" step="1" />
+        </div>
+        <div>
+          <label>Time Signature</label>
+          <select name="time_signature">
+            <option value="4/4" selected>4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+          </select>
+        </div>
+        <div>
+          <label>Seed <span class="badge badge-opt">optional</span></label>
+          <input type="number" name="seed" placeholder="random" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Generation Params ── -->
+    <section>
+      <h2>Generation Parameters</h2>
+      <div class="grid grid-3">
+        <div>
+          <label>Guidance Scale</label>
+          <input type="number" name="guidance_scale" value="12.0" min="1" max="30" step="0.5" />
+        </div>
+        <div>
+          <label>Infer Steps</label>
+          <input type="number" name="infer_steps" value="65" min="10" max="200" step="5" />
+        </div>
+        <div>
+          <label>Shift</label>
+          <input type="number" name="shift" value="6.0" min="0" max="20" step="0.5" />
+        </div>
+        <div>
+          <label>Cover Noise Strength</label>
+          <input type="number" name="cover_noise_strength" value="0.15" min="0" max="1" step="0.01" />
+        </div>
+        <div>
+          <label>Audio Cover Strength</label>
+          <input type="number" name="audio_cover_strength" value="1.0" min="0" max="1" step="0.05" />
+        </div>
+        <div>
+          <label>LoRA Scale</label>
+          <input type="number" name="lora_scale" value="0.7" min="0" max="1" step="0.05" />
+        </div>
+      </div>
+    </section>
+
+    <button type="submit" id="submit-btn">Generate Cover</button>
+  </form>
+
+  <!-- ── Status Panel ── -->
+  <div id="status-panel">
+    <h2>Job Status</h2>
+    <div class="status-row">
+      <div class="status-dot dot-queued" id="status-dot"></div>
+      <span class="status-text" id="status-text">Queued</span>
+    </div>
+    <div class="progress-note" id="progress-note">Generation typically takes 1–3 minutes depending on GPU and step count.</div>
+    <div id="job-id-label"></div>
+    <a class="download-btn" id="download-link" href="#" style="display:none" download>
+      ⬇ Download FLAC
+    </a>
+    <div class="error-box" id="error-box" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── File drop label updates ──
+  function bindDrop(inputId, nameId) {
+    const input = document.getElementById(inputId);
+    const nameEl = document.getElementById(nameId);
+    input.addEventListener("change", () => {
+      nameEl.textContent = input.files[0]?.name || "No file selected";
+    });
+  }
+  bindDrop("instr-input", "instr-name");
+  bindDrop("bass-input",  "bass-name");
+
+  // ── Drag-over highlight ──
+  document.querySelectorAll(".file-drop").forEach(zone => {
+    zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop",      () => zone.classList.remove("dragover"));
+  });
+
+  // ── Form submit → enqueue ──
+  const form       = document.getElementById("cover-form");
+  const submitBtn  = document.getElementById("submit-btn");
+  const statusPanel = document.getElementById("status-panel");
+  const statusDot  = document.getElementById("status-dot");
+  const statusText = document.getElementById("status-text");
+  const progressNote = document.getElementById("progress-note");
+  const jobIdLabel = document.getElementById("job-id-label");
+  const downloadLink = document.getElementById("download-link");
+  const errorBox   = document.getElementById("error-box");
+
+  let pollTimer = null;
+
+  function setStatus(status, jobId) {
+    const dotClasses = { queued: "dot-queued", running: "dot-running", done: "dot-done", failed: "dot-failed" };
+    statusDot.className = "status-dot " + (dotClasses[status] || "dot-queued");
+    statusText.textContent = { queued: "Queued…", running: "Running — generating cover…", done: "Done!", failed: "Failed" }[status] || status;
+    if (jobId) jobIdLabel.textContent = "Job ID: " + jobId;
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function startPolling(jobId) {
+    pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch("/api/jobs/" + jobId);
+        const data = await res.json();
+        setStatus(data.status, jobId);
+
+        if (data.status === "done") {
+          stopPolling();
+          progressNote.style.display = "none";
+          downloadLink.href = data.download_url;
+          downloadLink.style.display = "inline-flex";
+          submitBtn.disabled = false;
+        } else if (data.status === "failed") {
+          stopPolling();
+          progressNote.style.display = "none";
+          errorBox.style.display = "block";
+          errorBox.textContent = data.error || "Unknown error";
+          submitBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error("Poll error:", err);
+      }
+    }, 2000);
+  }
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    stopPolling();
+
+    // Reset status panel
+    downloadLink.style.display = "none";
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    progressNote.style.display = "block";
+    statusPanel.style.display = "block";
+    submitBtn.disabled = true;
+
+    const formData = new FormData(form);
+
+    try {
+      const res  = await fetch("/api/cover", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!data.ok) {
+        setStatus("failed");
+        errorBox.style.display = "block";
+        errorBox.textContent = data.error || "Submission failed";
+        submitBtn.disabled = false;
+        return;
+      }
+
+      setStatus(data.status, data.job_id);
+      startPolling(data.job_id);
+    } catch (err) {
+      setStatus("failed");
+      errorBox.style.display = "block";
+      errorBox.textContent = "Network error: " + err.message;
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
