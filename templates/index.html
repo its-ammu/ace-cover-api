@@ -395,6 +395,10 @@
 (function () {
   "use strict";
 
+  // Base URL prefix injected server-side (e.g. /aceapi).
+  // All API fetch calls are relative to this so they work behind any ALB path.
+  const BASE = "{{ url_prefix }}";
+
   // ── File drop label updates ──
   function bindDrop(inputId, nameId) {
     const input = document.getElementById(inputId);
@@ -440,7 +444,7 @@
   function startPolling(jobId) {
     pollTimer = setInterval(async () => {
       try {
-        const res  = await fetch("/api/jobs/" + jobId);
+        const res  = await fetch(BASE + "/api/jobs/" + jobId);
         const data = await res.json();
         setStatus(data.status, jobId);
 
@@ -478,7 +482,7 @@
     const formData = new FormData(form);
 
     try {
-      const res  = await fetch("/api/cover", { method: "POST", body: formData });
+      const res  = await fetch(BASE + "/api/cover", { method: "POST", body: formData });
       const data = await res.json();
 
       if (!data.ok) {

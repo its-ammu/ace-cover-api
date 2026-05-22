@@ -77,7 +77,8 @@ def create_app() -> Flask:
     ) * 1024 * 1024
 
     store = JobStore()
-    register_routes(app, store)
+    url_prefix = os.environ.get("COVER_API_URL_PREFIX", "/aceapi")
+    register_routes(app, store, url_prefix=url_prefix)
 
     runner = _make_runner(store)
     worker_thread = start_worker(store, runner)

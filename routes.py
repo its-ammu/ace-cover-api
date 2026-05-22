@@ -1,6 +1,6 @@
 """Flask Blueprint for the Cover API HTTP layer.
 
-Endpoints:
+Endpoints (all mounted under the configured url_prefix, default /aceapi):
     GET  /                        Serve the browser UI.
     POST /api/cover               Accept multipart upload; enqueue cover job.
     GET  /api/jobs/<job_id>       Poll job status.
@@ -16,7 +16,7 @@ import os
 import tempfile
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, Response, jsonify, render_template, request, send_file
+from flask import Blueprint, jsonify, render_template, request, send_file, url_for
 
 from acestep.cover_api.jobs import JobStatus
 from acestep.cover_api.pipeline import CoverParams
@@ -93,21 +93,26 @@ def _safe_ext(filename: str) -> str:
     return ext if ext in _ALLOWED_AUDIO_EXT else ".wav"
 
 
-def register_routes(app, store: "JobStore") -> None:
+def register_routes(app, store: "JobStore", url_prefix: str = "/aceapi") -> None:
     """Register the Blueprint and inject ``store`` into the app context.
 
     Args:
         app: Flask application instance.
         store: Shared JobStore for job creation and lookup.
+        url_prefix: URL prefix to mount the blueprint under (default ``/aceapi``).
+            Set ``COVER_API_URL_PREFIX`` env var to override.
     """
     app.config["COVER_STORE"] = store
-    app.register_blueprint(bp)
+    app.config["COVER_URL_PREFIX"] = url_prefix
+    app.register_blueprint(bp, url_prefix=url_prefix)
 
 
 @bp.route("/")
 def index():
     """Serve the single-page browser UI."""
-    return render_template("index.html")
+    from flask import current_app
+    url_prefix = current_app.config.get("COVER_URL_PREFIX", "/aceapi")
+    return render_template("index.html", url_prefix=url_prefix)
 
 
 @bp.route("/api/health")
@@ -179,7 +184,8 @@ def job_status(job_id: str):
     data = job.to_dict()
     data["ok"] = True
     if job.status == JobStatus.DONE:
-        data["download_url"] = f"/api/jobs/{job_id}/download"
+        # url_for respects the blueprint's url_prefix automatically
+        data["download_url"] = url_for("cover.download_result", job_id=job_id)
     return jsonify(data)
 
 
