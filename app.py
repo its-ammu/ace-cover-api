@@ -77,8 +77,10 @@ def create_app() -> Flask:
     ) * 1024 * 1024
 
     store = JobStore()
-    url_prefix = os.environ.get("COVER_API_URL_PREFIX", "/aceapi")
-    register_routes(app, store, url_prefix=url_prefix)
+    # Public prefix = what the browser sees (ALB path rule).
+    # Flask itself always receives requests at / because the ALB strips the prefix.
+    public_prefix = os.environ.get("COVER_API_URL_PREFIX", "/aceapi")
+    register_routes(app, store, public_prefix=public_prefix)
 
     runner = _make_runner(store)
     worker_thread = start_worker(store, runner)
