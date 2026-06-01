@@ -76,7 +76,17 @@ def _load_scrag_vae(handler: "AceStepHandler") -> None:  # type: ignore[name-def
     scrag_path = hf_hub_download(repo_id, _SCRAG_FILENAME, cache_dir=cache_dir)
     scrag_weights = load_file(scrag_path)
     decoder_keys = {k: v for k, v in scrag_weights.items() if k.startswith("decoder.")}
-    handler.vae.load_state_dict(decoder_keys, strict=False)
+
+    if not decoder_keys:
+        logger.warning("[handler_setup] ScragVAE: no decoder.* keys found — skipping")
+        return
+
+    # Cast to VAE's dtype to avoid dtype mismatch (same as generate_semantic.py)
+    vae = handler.vae
+    vae_dtype = next(vae.parameters()).dtype
+    decoder_keys = {k: v.to(dtype=vae_dtype) for k, v in decoder_keys.items()}
+
+    vae.load_state_dict(decoder_keys, strict=False)
     logger.info(f"[handler_setup] ScragVAE loaded: {len(decoder_keys)} decoder weights")
 
 
