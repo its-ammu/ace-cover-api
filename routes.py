@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, jsonify, render_template, request, send_file
 
+from acestep.cover_api.handler_setup import ALLOWED_MODELS
 from acestep.cover_api.jobs import JobStatus
 from acestep.cover_api.pipeline import CoverParams
 
@@ -49,6 +50,10 @@ def _parse_params() -> CoverParams:
     seed_raw = f.get("seed", "")
     seed = int(seed_raw) if seed_raw.strip() else None
 
+    model = f.get("model", CoverParams.model)
+    if model not in ALLOWED_MODELS:
+        raise ValueError(f"model must be one of {ALLOWED_MODELS}, got '{model}'")
+
     return CoverParams(
         captions=f.get("captions", CoverParams.captions),
         lyrics=f.get("lyrics", CoverParams.lyrics),
@@ -61,6 +66,7 @@ def _parse_params() -> CoverParams:
         audio_cover_strength=_float("audio_cover_strength", CoverParams.audio_cover_strength),
         lora_scale=_float("lora_scale", CoverParams.lora_scale),
         seed=seed,
+        model=model,
     )
 
 
@@ -118,7 +124,7 @@ def index():
     """Serve the single-page browser UI."""
     from flask import current_app
     url_prefix = current_app.config.get("COVER_PUBLIC_PREFIX", "/aceapi")
-    return render_template("index.html", url_prefix=url_prefix)
+    return render_template("index.html", url_prefix=url_prefix, allowed_models=ALLOWED_MODELS)
 
 
 @bp.route("/api/health")

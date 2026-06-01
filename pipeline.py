@@ -34,6 +34,7 @@ class CoverParams:
         audio_cover_strength: Audio conditioning strength (0–1).
         lora_scale: digital-acoustic LoRA influence (0–1).
         seed: Optional RNG seed for reproducible results.
+        model: DiT checkpoint name (``"acestep-v15-xl-sft"`` or ``"acestep-v15-turbo"``).
     """
 
     captions: str = "modern electronic pop, bright synth arpeggios, punchy drums, deep sub bass"
@@ -47,6 +48,7 @@ class CoverParams:
     audio_cover_strength: float = 1.0
     lora_scale: float = 0.7
     seed: Optional[int] = None
+    model: str = "acestep-v15-xl-sft"
 
 
 def _load_instrumental(instrumental_path: str) -> tuple[torch.Tensor, float]:

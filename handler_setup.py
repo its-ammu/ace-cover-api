@@ -28,9 +28,11 @@ from typing import Optional
 
 from loguru import logger
 
-_handler: Optional["AceStepHandler"] = None  # type: ignore[name-defined]  # noqa: F821
+# One handler per model config, lazily initialized on first use.
+_handlers: dict[str, "AceStepHandler"] = {}  # type: ignore[name-defined]  # noqa: F821
 _lock = threading.Lock()
 
+ALLOWED_MODELS = ("acestep-v15-xl-sft", "acestep-v15-turbo")
 _DEFAULT_CONFIG_PATH = "acestep-v15-xl-sft"
 _DEFAULT_LORA_PATH = "checkpoints/lora_sliders/digital-acoustic"
 _DEFAULT_LORA_REPO = "Xanthius/Ace-Step-1.5-XL-Concept-Sliders"
@@ -190,8 +192,11 @@ def _load_lora(handler: "AceStepHandler") -> None:  # type: ignore[name-defined]
         handler.use_lora = False
 
 
-def _build_handler() -> "AceStepHandler":  # type: ignore[name-defined]  # noqa: F821
-    """Instantiate and fully initialize the AceStepHandler with ScragVAE + LoRA.
+def _build_handler(config_path: str) -> "AceStepHandler":  # type: ignore[name-defined]  # noqa: F821
+    """Instantiate and fully initialize an AceStepHandler with ScragVAE + LoRA.
+
+    Args:
+        config_path: DiT checkpoint name (e.g. ``"acestep-v15-xl-sft"``).
 
     Returns:
         Fully initialized AceStepHandler ready for ``service_generate`` calls.
@@ -201,7 +206,6 @@ def _build_handler() -> "AceStepHandler":  # type: ignore[name-defined]  # noqa:
     """
     from acestep.handler import AceStepHandler
 
-    config_path = os.environ.get("COVER_API_CONFIG_PATH", _DEFAULT_CONFIG_PATH)
     logger.info(f"[handler_setup] Initializing AceStepHandler (config={config_path}) ...")
 
     handler = AceStepHandler()
@@ -216,21 +220,38 @@ def _build_handler() -> "AceStepHandler":  # type: ignore[name-defined]  # noqa:
     return handler
 
 
-def get_handler() -> "AceStepHandler":  # type: ignore[name-defined]  # noqa: F821
-    """Return the process-wide AceStepHandler, initializing it on first call.
+def get_handler(config_path: Optional[str] = None) -> "AceStepHandler":  # type: ignore[name-defined]  # noqa: F821
+    """Return a per-model AceStepHandler, initializing it on first use.
 
-    Thread-safe via a module-level lock.  Subsequent calls are lock-free reads.
+    Each distinct ``config_path`` gets its own singleton, loaded once and
+    reused for all subsequent calls with the same model.  Thread-safe via a
+    module-level lock.
+
+    Args:
+        config_path: DiT checkpoint name.  Defaults to the env var
+            ``COVER_API_CONFIG_PATH`` or ``"acestep-v15-xl-sft"``.
 
     Returns:
-        The fully initialized AceStepHandler singleton.
+        The fully initialized AceStepHandler for that model.
 
     Raises:
-        RuntimeError: On first call, if initialization fails.
+        ValueError: If ``config_path`` is not in ``ALLOWED_MODELS``.
+        RuntimeError: On first call for a model, if initialization fails.
     """
-    global _handler
-    if _handler is not None:
-        return _handler
+    if config_path is None:
+        config_path = os.environ.get("COVER_API_CONFIG_PATH", _DEFAULT_CONFIG_PATH)
+
+    if config_path not in ALLOWED_MODELS:
+        raise ValueError(
+            f"[handler_setup] Unknown model '{config_path}'. "
+            f"Allowed: {ALLOWED_MODELS}"
+        )
+
+    if config_path in _handlers:
+        return _handlers[config_path]
+
     with _lock:
-        if _handler is None:
-            _handler = _build_handler()
-    return _handler
+        if config_path not in _handlers:
+            _handlers[config_path] = _build_handler(config_path)
+
+    return _handlers[config_path]

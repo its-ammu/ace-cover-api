@@ -49,7 +49,7 @@ def _make_runner(store: JobStore):
         out_path = os.path.join(output_dir, f"{job.job_id}.flac")
 
         params = pipeline.CoverParams(**job.params)
-        handler = handler_setup.get_handler()
+        handler = handler_setup.get_handler(config_path=params.model)
 
         return pipeline.run_cover(
             handler=handler,
