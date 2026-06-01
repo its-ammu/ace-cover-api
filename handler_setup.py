@@ -38,18 +38,28 @@ _DEFAULT_LORA_FILENAME = "ace-step_1-5_xl_digital-acoustic_slider.safetensors"
 _DEFAULT_SCRAG_REPO = "scragnog/Ace-Step-1.5-ScragVAE"
 _SCRAG_FILENAME = "diffusion_pytorch_model.safetensors"
 
-# Minimal PEFT adapter_config.json required by handler.add_lora().
-# The concept slider LoRAs from Xanthius ship without one, so we create it.
+# PEFT adapter_config.json matching the actual concept slider LoRA structure.
+# Keys/rank/target_modules confirmed by the original setup instructions.
 _PEFT_ADAPTER_CONFIG = {
-    "peft_type": "LORA",
-    "task_type": "FEATURE_EXTRACTION",
-    "base_model_name_or_path": "ACE-Step/acestep-v15-xl-base",
-    "r": 16,
-    "lora_alpha": 32,
-    "lora_dropout": 0.0,
-    "target_modules": ["to_q", "to_k", "to_v", "to_out.0"],
+    "alpha_pattern": {},
+    "auto_mapping": None,
+    "base_model_name_or_path": "",
     "bias": "none",
+    "fan_in_fan_out": False,
     "inference_mode": True,
+    "init_lora_weights": True,
+    "layers_pattern": None,
+    "layers_to_transform": None,
+    "lora_alpha": 8,
+    "lora_dropout": 0.0,
+    "modules_to_save": None,
+    "peft_type": "LORA",
+    "r": 8,
+    "rank_pattern": {},
+    "revision": None,
+    "target_modules": ["down_proj", "gate_proj", "k_proj", "o_proj", "q_proj", "up_proj", "v_proj"],
+    "task_type": None,
+    "use_rslora": False,
 }
 
 
@@ -74,17 +84,21 @@ def _load_scrag_vae(handler: "AceStepHandler") -> None:  # type: ignore[name-def
 
 
 def _download_lora(dest_dir: Path) -> None:
-    """Download the concept slider LoRA from HuggingFace into ``dest_dir``.
+    """Download and reformat the concept slider LoRA into a PEFT-loadable directory.
 
-    The Xanthius concept slider repo ships only raw ``.safetensors`` files with
-    no ``adapter_config.json``.  This function downloads the weights and writes
-    a minimal PEFT config alongside them so ``handler.add_lora()`` can load the
-    directory correctly.
+    The Xanthius concept slider ships as a raw ``.safetensors`` with keys prefixed
+    ``diffusion_model.decoder.*``.  PEFT expects keys prefixed ``base_model.model.*``
+    and an ``adapter_config.json`` alongside the weights.  This function:
+      1. Downloads the raw safetensors from HuggingFace.
+      2. Remaps ``diffusion_model.decoder.`` → ``base_model.model.`` on all keys.
+      3. Saves the remapped weights as ``adapter_model.safetensors``.
+      4. Writes ``adapter_config.json`` with the confirmed rank/target_modules.
 
     Args:
         dest_dir: Destination directory (created if absent).
     """
     from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file, save_file
 
     repo_id = os.environ.get("COVER_API_LORA_REPO", _DEFAULT_LORA_REPO)
     filename = os.environ.get("COVER_API_LORA_FILENAME", _DEFAULT_LORA_FILENAME)
@@ -93,18 +107,20 @@ def _download_lora(dest_dir: Path) -> None:
     logger.info(f"[handler_setup] Downloading LoRA {filename} from {repo_id} ...")
     hf_path = hf_hub_download(repo_id, filename, cache_dir=cache_dir)
 
+    tensors = load_file(hf_path)
+    remapped = {
+        k.replace("diffusion_model.decoder.", "base_model.model."): v
+        for k, v in tensors.items()
+    }
+
     dest_dir.mkdir(parents=True, exist_ok=True)
-    adapter_weights = dest_dir / "adapter_model.safetensors"
+    save_file(remapped, str(dest_dir / "adapter_model.safetensors"))
+    logger.info(f"[handler_setup] Saved remapped LoRA weights ({len(remapped)} keys)")
+
     adapter_config = dest_dir / "adapter_config.json"
-
-    # Copy the weights file into the PEFT directory layout
-    import shutil
-    shutil.copy2(hf_path, str(adapter_weights))
-
     if not adapter_config.exists():
-        with open(adapter_config, "w") as fh:
-            json.dump(_PEFT_ADAPTER_CONFIG, fh, indent=2)
-        logger.info(f"[handler_setup] Wrote minimal adapter_config.json to {adapter_config}")
+        adapter_config.write_text(json.dumps(_PEFT_ADAPTER_CONFIG, indent=2))
+        logger.info(f"[handler_setup] Wrote adapter_config.json to {adapter_config}")
 
     logger.info(f"[handler_setup] LoRA ready at {dest_dir}")
 
