@@ -54,10 +54,13 @@ def _parse_params() -> CoverParams:
     if model not in ALLOWED_MODELS:
         raise ValueError(f"model must be one of {ALLOWED_MODELS}, got '{model}'")
 
+    no_fsq = f.get("no_fsq", "false").lower() in ("1", "true", "on", "yes")
+
     return CoverParams(
         captions=f.get("captions", CoverParams.captions),
         lyrics=f.get("lyrics", CoverParams.lyrics),
         bpm=_int("bpm", CoverParams.bpm),
+        keyscale=f.get("keyscale", CoverParams.keyscale),
         time_signature=f.get("time_signature", CoverParams.time_signature),
         guidance_scale=_float("guidance_scale", CoverParams.guidance_scale),
         infer_steps=_int("infer_steps", CoverParams.infer_steps),
@@ -67,6 +70,7 @@ def _parse_params() -> CoverParams:
         lora_scale=_float("lora_scale", CoverParams.lora_scale),
         seed=seed,
         model=model,
+        no_fsq=no_fsq,
     )
 
 

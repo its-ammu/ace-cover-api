@@ -335,6 +335,10 @@
           </select>
         </div>
         <div>
+          <label>Key / Scale <span class="badge badge-opt">optional</span></label>
+          <input type="text" name="keyscale" placeholder="e.g. C major, F# minor" />
+        </div>
+        <div>
           <label>Seed <span class="badge badge-opt">optional</span></label>
           <input type="number" name="seed" placeholder="random" />
         </div>
@@ -381,6 +385,13 @@
         <div>
           <label>LoRA Scale</label>
           <input type="number" name="lora_scale" value="0.7" min="0" max="1" step="0.05" />
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;padding-top:1.6rem;">
+          <input type="checkbox" name="no_fsq" id="no_fsq" value="true" style="width:1.1rem;height:1.1rem;cursor:pointer;" />
+          <label for="no_fsq" style="margin:0;cursor:pointer;">
+            No FSQ
+            <span class="badge badge-opt" title="Uses source-audio latents directly instead of FSQ-quantized audio codes. Preserves more fine-grained source detail (FSQ is lossy). May produce output closer to the source's character.">?</span>
+          </label>
         </div>
       </div>
     </section>

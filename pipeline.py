@@ -26,6 +26,8 @@ class CoverParams:
         captions: Style / genre prompt string.
         lyrics: Lyric text (default ``[Instrumental]``).
         bpm: Beats per minute for the track meta.
+        keyscale: Key and scale string passed to the model meta (e.g. ``"C major"``).
+            Empty string means unspecified.
         time_signature: Time signature string (e.g. ``"4/4"``).
         guidance_scale: Classifier-free guidance scale.
         infer_steps: Number of diffusion inference steps.
@@ -35,11 +37,14 @@ class CoverParams:
         lora_scale: digital-acoustic LoRA influence (0–1).
         seed: Optional RNG seed for reproducible results.
         model: DiT checkpoint name (``"acestep-v15-xl-sft"`` or ``"acestep-v15-turbo"``).
+        no_fsq: When ``True``, uses ``task_type="cover-nofsq"`` which skips
+            FSQ-quantized source conditioning for more creative output.
     """
 
     captions: str = "modern electronic pop, bright synth arpeggios, punchy drums, deep sub bass"
     lyrics: str = "[Instrumental]"
     bpm: int = 100
+    keyscale: str = ""
     time_signature: str = "4/4"
     guidance_scale: float = 12.0
     infer_steps: int = 65
@@ -49,6 +54,7 @@ class CoverParams:
     lora_scale: float = 0.7
     seed: Optional[int] = None
     model: str = "acestep-v15-xl-sft"
+    no_fsq: bool = False
 
 
 def _load_instrumental(instrumental_path: str) -> tuple[torch.Tensor, float]:
@@ -119,7 +125,10 @@ def run_cover(
     from acestep.cover_api.hints import extract_semantic_hints
 
     target_wavs, duration = _load_instrumental(instrumental_path)
-    metas = [{"audio_duration": duration, "time_signature": params.time_signature, "bpm": params.bpm}]
+    metas: dict = {"audio_duration": duration, "time_signature": params.time_signature, "bpm": params.bpm}
+    if params.keyscale.strip():
+        metas["keyscale"] = params.keyscale.strip()
+    metas = [metas]
 
     hints: Optional[torch.Tensor] = None
     if bass_path is not None:
@@ -143,10 +152,12 @@ def run_cover(
         if hints is not None:
             handler.model.prepare_condition = _patched_prepare  # type: ignore[attr-defined]
 
+        task_type = "cover-nofsq" if params.no_fsq else "cover"
         logger.info(
             f"[pipeline] Generating cover — steps={params.infer_steps}, "
             f"cfg={params.guidance_scale}, cns={params.cover_noise_strength}, "
-            f"lora_scale={params.lora_scale}"
+            f"lora_scale={params.lora_scale}, task_type={task_type}, "
+            f"keyscale={params.keyscale!r}"
         )
         result = handler.service_generate(  # type: ignore[attr-defined]
             captions=params.captions,
@@ -158,7 +169,7 @@ def run_cover(
             infer_steps=params.infer_steps,
             shift=params.shift,
             cover_noise_strength=params.cover_noise_strength,
-            task_type="cover",
+            task_type=task_type,
             infer_method="ode",
             seed=params.seed,
         )
