@@ -39,7 +39,7 @@ class Job:
         instrumental_path: Absolute path to the uploaded instrumental stem.
         bass_path: Optional absolute path to the uploaded bass stem.
         status: Current lifecycle status.
-        output_path: Set when status is DONE; path to the generated FLAC.
+        output_paths: Set when status is DONE; paths to generated FLAC variants.
         error: Set when status is FAILED; human-readable error message.
     """
 
@@ -48,19 +48,19 @@ class Job:
     instrumental_path: str
     bass_path: Optional[str]
     status: JobStatus = JobStatus.QUEUED
-    output_path: Optional[str] = None
+    output_paths: Optional[list[str]] = None
     error: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of this job.
 
         Returns:
-            Dict with ``job_id``, ``status``, ``output_path``, and ``error``.
+            Dict with ``job_id``, ``status``, ``output_paths``, and ``error``.
         """
         return {
             "job_id": self.job_id,
             "status": self.status.value,
-            "output_path": self.output_path,
+            "output_paths": self.output_paths,
             "error": self.error,
         }
 
@@ -135,16 +135,16 @@ class JobStore:
                 setattr(job, key, value)
 
 
-def start_worker(store: JobStore, runner: Callable[[Job], str]) -> threading.Thread:
+def start_worker(store: JobStore, runner: Callable[[Job], list[str]]) -> threading.Thread:
     """Spawn the single background worker thread that processes jobs.
 
     The worker blocks on ``store._queue``, marks jobs RUNNING, calls
-    ``runner(job)`` which must return the output FLAC path, then marks
+    ``runner(job)`` which must return output FLAC paths, then marks
     the job DONE (or FAILED on exception).
 
     Args:
         store: The shared JobStore to consume from.
-        runner: Callable ``(job) -> output_path`` that performs the actual
+        runner: Callable ``(job) -> list[output_path]`` that performs the actual
             generation.  Must be thread-safe (only one call at a time here).
 
     Returns:
@@ -165,9 +165,9 @@ def start_worker(store: JobStore, runner: Callable[[Job], str]) -> threading.Thr
                 continue
             try:
                 logger.info(f"[worker] Starting job {job_id}")
-                out_path = runner(job)
-                store._update(job_id, status=JobStatus.DONE, output_path=out_path)
-                logger.info(f"[worker] Job {job_id} done: {out_path}")
+                out_paths = runner(job)
+                store._update(job_id, status=JobStatus.DONE, output_paths=out_paths)
+                logger.info(f"[worker] Job {job_id} done: {out_paths}")
             except Exception:
                 err = traceback.format_exc()
                 logger.error(f"[worker] Job {job_id} failed:\n{err}")

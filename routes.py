@@ -4,7 +4,8 @@ Endpoints (all mounted under the configured url_prefix, default /aceapi):
     GET  /                        Serve the browser UI.
     POST /api/cover               Accept multipart upload; enqueue cover job.
     GET  /api/jobs/<job_id>       Poll job status.
-    GET  /api/jobs/<job_id>/download  Stream finished FLAC to caller.
+    GET  /api/jobs/<job_id>/audio/<idx>   Stream FLAC for in-browser playback.
+    GET  /api/jobs/<job_id>/download/<idx>  Download one variant FLAC.
     GET  /api/health              Liveness check.
 
 All JSON responses use the shape ``{"ok": bool, ...}``.
@@ -199,19 +200,41 @@ def job_status(job_id: str):
 
     data = job.to_dict()
     data["ok"] = True
-    if job.status == JobStatus.DONE:
+    if job.status == JobStatus.DONE and job.output_paths:
         from flask import current_app
         prefix = current_app.config.get("COVER_PUBLIC_PREFIX", "")
-        data["download_url"] = f"{prefix}/api/jobs/{job_id}/download"
+        data["audio_urls"] = [
+            f"{prefix}/api/jobs/{job_id}/audio/{idx}" for idx in range(len(job.output_paths))
+        ]
+        data["download_urls"] = [
+            f"{prefix}/api/jobs/{job_id}/download/{idx}" for idx in range(len(job.output_paths))
+        ]
     return jsonify(data)
 
 
-@bp.route("/api/jobs/<job_id>/download")
-def download_result(job_id: str):
-    """Stream the generated FLAC file to the caller.
+def _get_variant_path(job, variant_idx: int) -> tuple[str | None, str | None]:
+    """Resolve output path for a variant index.
+
+    Returns:
+        Tuple of ``(path, error_message)``. ``path`` is set on success.
+    """
+    if not job.output_paths:
+        return None, "no output files recorded"
+    if variant_idx < 0 or variant_idx >= len(job.output_paths):
+        return None, f"variant index {variant_idx} out of range"
+    path = job.output_paths[variant_idx]
+    if not path or not os.path.exists(path):
+        return None, "output file not found on disk"
+    return path, None
+
+
+@bp.route("/api/jobs/<job_id>/audio/<int:variant_idx>")
+def stream_audio(job_id: str, variant_idx: int):
+    """Stream a generated FLAC for in-browser playback (no forced download).
 
     Args:
         job_id: UUID of a completed job.
+        variant_idx: Zero-based variant index (0 or 1 for batch size 2).
 
     Returns:
         FLAC audio bytes, or a JSON error if the job is not ready / not found.
@@ -222,14 +245,46 @@ def download_result(job_id: str):
         return jsonify({"ok": False, "error": "job not found"}), 404
     if job.status != JobStatus.DONE:
         return jsonify({"ok": False, "error": f"job not ready (status={job.status.value})"}), 409
-    if not job.output_path or not os.path.exists(job.output_path):
-        return jsonify({"ok": False, "error": "output file not found on disk"}), 500
+
+    path, err = _get_variant_path(job, variant_idx)
+    if err:
+        return jsonify({"ok": False, "error": err}), 500
 
     return send_file(
-        job.output_path,
+        path,
+        mimetype="audio/flac",
+        as_attachment=False,
+        download_name=f"cover_{job_id}_{variant_idx}.flac",
+    )
+
+
+@bp.route("/api/jobs/<job_id>/download/<int:variant_idx>")
+def download_result(job_id: str, variant_idx: int):
+    """Download one generated FLAC variant as an attachment.
+
+    Args:
+        job_id: UUID of a completed job.
+        variant_idx: Zero-based variant index.
+
+    Returns:
+        FLAC audio bytes, or a JSON error if the job is not ready / not found.
+    """
+    store: JobStore = _current_store()
+    job = store.get(job_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    if job.status != JobStatus.DONE:
+        return jsonify({"ok": False, "error": f"job not ready (status={job.status.value})"}), 409
+
+    path, err = _get_variant_path(job, variant_idx)
+    if err:
+        return jsonify({"ok": False, "error": err}), 500
+
+    return send_file(
+        path,
         mimetype="audio/flac",
         as_attachment=True,
-        download_name=f"cover_{job_id}.flac",
+        download_name=f"cover_{job_id}_{variant_idx}.flac",
     )
 
 

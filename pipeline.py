@@ -8,8 +8,12 @@ dependencies — purely data-in / file-out.
 from __future__ import annotations
 
 import dataclasses
+import random
 from pathlib import Path
 from typing import Optional
+
+# Number of parallel variants per job (batched in one service_generate call).
+COVER_BATCH_SIZE = 2
 
 import librosa
 import numpy as np
@@ -94,13 +98,29 @@ def _normalize_audio(audio_np: np.ndarray, peak: float = 0.891) -> np.ndarray:
     return audio_np
 
 
+def _resolve_batch_seeds(params: CoverParams, batch_size: int = COVER_BATCH_SIZE) -> list[int]:
+    """Return per-variant RNG seeds for a batched cover run.
+
+    Args:
+        params: Generation parameters (optional single ``seed``).
+        batch_size: Number of variants to generate.
+
+    Returns:
+        List of integer seeds, length ``batch_size``.
+    """
+    if params.seed is not None:
+        return [params.seed + i * 10007 for i in range(batch_size)]
+    return [random.randint(0, 2**32 - 1) for _ in range(batch_size)]
+
+
 def run_cover(
     handler: object,
     params: CoverParams,
     instrumental_path: str,
     bass_path: Optional[str],
-    out_path: str,
-) -> str:
+    output_dir: str,
+    job_id: str,
+) -> list[str]:
     """Run a full ScragVAE cover generation and write the result to disk.
 
     When ``bass_path`` is provided, semantic hints are extracted from the bass
@@ -113,10 +133,11 @@ def run_cover(
         params: User-controlled generation parameters.
         instrumental_path: Path to the instrumental stem (cover source).
         bass_path: Optional path to bass stem for semantic hints.
-        out_path: Destination path for the output FLAC file.
+        output_dir: Directory for output FLAC files.
+        job_id: Job UUID used as filename prefix.
 
     Returns:
-        Absolute path to the written FLAC file.
+        Absolute paths to ``COVER_BATCH_SIZE`` written FLAC files.
 
     Raises:
         KeyError: If ``service_generate`` does not return ``target_latents``.
@@ -125,15 +146,25 @@ def run_cover(
     from acestep.cover_api.hints import extract_semantic_hints
 
     target_wavs, duration = _load_instrumental(instrumental_path)
-    metas: dict = {"audio_duration": duration, "time_signature": params.time_signature, "bpm": params.bpm}
+    meta_item: dict = {
+        "audio_duration": duration,
+        "time_signature": params.time_signature,
+        "bpm": params.bpm,
+    }
     if params.keyscale.strip():
-        metas["keyscale"] = params.keyscale.strip()
-    metas = [metas]
+        meta_item["keyscale"] = params.keyscale.strip()
+
+    batch_size = COVER_BATCH_SIZE
+    target_wavs = target_wavs.repeat(batch_size, 1, 1)
+    metas = [dict(meta_item) for _ in range(batch_size)]
+    batch_seeds = _resolve_batch_seeds(params, batch_size)
 
     hints: Optional[torch.Tensor] = None
     if bass_path is not None:
         logger.info(f"[pipeline] Extracting semantic hints from bass stem: {bass_path}")
         hints = extract_semantic_hints(handler, bass_path)
+        if hints.shape[0] == 1:
+            hints = hints.repeat(batch_size, 1, 1)
         logger.info(f"[pipeline] Hints shape: {hints.shape}")
 
     handler.set_lora_scale(params.lora_scale)  # type: ignore[attr-defined]
@@ -154,14 +185,14 @@ def run_cover(
 
         task_type = "cover-nofsq" if params.no_fsq else "cover"
         logger.info(
-            f"[pipeline] Generating cover — steps={params.infer_steps}, "
+            f"[pipeline] Generating cover batch={batch_size} — steps={params.infer_steps}, "
             f"cfg={params.guidance_scale}, cns={params.cover_noise_strength}, "
             f"lora_scale={params.lora_scale}, task_type={task_type}, "
-            f"keyscale={params.keyscale!r}"
+            f"keyscale={params.keyscale!r}, seeds={batch_seeds}"
         )
         result = handler.service_generate(  # type: ignore[attr-defined]
-            captions=params.captions,
-            lyrics=params.lyrics,
+            captions=[params.captions] * batch_size,
+            lyrics=[params.lyrics] * batch_size,
             target_wavs=target_wavs,
             metas=metas,
             audio_cover_strength=params.audio_cover_strength,
@@ -171,7 +202,7 @@ def run_cover(
             cover_noise_strength=params.cover_noise_strength,
             task_type=task_type,
             infer_method="ode",
-            seed=params.seed,
+            seed=batch_seeds,
         )
     finally:
         if hints is not None:
@@ -188,13 +219,23 @@ def run_cover(
     if latents.shape[-1] == 64:
         latents = latents.movedim(-1, -2)
 
-    with torch.no_grad():
-        audio_tensor = handler.tiled_decode(latents)  # type: ignore[attr-defined]
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_paths: list[str] = []
 
-    audio_np = audio_tensor.float().cpu().numpy().squeeze()
-    audio_np = _normalize_audio(audio_np)
+    for idx in range(latents.shape[0]):
+        with torch.no_grad():
+            audio_tensor = handler.tiled_decode(latents[idx : idx + 1])  # type: ignore[attr-defined]
 
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    sf.write(out_path, audio_np.T, 48000)
-    logger.info(f"[pipeline] Output written: {out_path}")
-    return str(Path(out_path).resolve())
+        audio_np = audio_tensor.float().cpu().numpy().squeeze()
+        audio_np = _normalize_audio(audio_np)
+        if audio_np.ndim == 1:
+            audio_np = audio_np[np.newaxis, :]
+
+        out_path = out_dir / f"{job_id}_{idx}.flac"
+        sf.write(str(out_path), audio_np.T, 48000)
+        resolved = str(out_path.resolve())
+        output_paths.append(resolved)
+        logger.info(f"[pipeline] Variant {idx} written (seed={batch_seeds[idx]}): {resolved}")
+
+    return output_paths

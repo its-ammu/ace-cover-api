@@ -240,6 +240,37 @@
 
     .download-btn:hover { opacity: .85; }
 
+    #outputs-panel {
+      display: none;
+      margin-top: 1.25rem;
+      gap: 1rem;
+    }
+    #outputs-panel.visible { display: grid; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 720px) {
+      #outputs-panel.visible { grid-template-columns: 1fr; }
+    }
+    .variant-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+    .variant-card h3 {
+      font-size: .9rem;
+      font-weight: 600;
+      margin: 0 0 .75rem;
+      color: var(--accent2);
+    }
+    .variant-card audio {
+      width: 100%;
+      margin-bottom: .75rem;
+    }
+    .variant-actions {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+
     .error-box {
       background: rgba(248, 113, 113, .1);
       border: 1px solid rgba(248, 113, 113, .3);
@@ -406,11 +437,11 @@
       <div class="status-dot dot-queued" id="status-dot"></div>
       <span class="status-text" id="status-text">Queued</span>
     </div>
-    <div class="progress-note" id="progress-note">Generation typically takes 1–3 minutes depending on GPU and step count.</div>
+    <div class="progress-note" id="progress-note">
+      Generating 2 variants in parallel (batch size 2). Typically 2–5 minutes depending on GPU and step count.
+    </div>
     <div id="job-id-label"></div>
-    <a class="download-btn" id="download-link" href="#" style="display:none" download>
-      ⬇ Download FLAC
-    </a>
+    <div id="outputs-panel"></div>
     <div class="error-box" id="error-box" style="display:none"></div>
   </div>
 </div>
@@ -449,7 +480,7 @@
   const statusText = document.getElementById("status-text");
   const progressNote = document.getElementById("progress-note");
   const jobIdLabel = document.getElementById("job-id-label");
-  const downloadLink = document.getElementById("download-link");
+  const outputsPanel = document.getElementById("outputs-panel");
   const errorBox   = document.getElementById("error-box");
 
   let pollTimer = null;
@@ -465,6 +496,38 @@
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
+  function clearOutputs() {
+    outputsPanel.innerHTML = "";
+    outputsPanel.classList.remove("visible");
+  }
+
+  function showOutputs(audioUrls, downloadUrls) {
+    outputsPanel.innerHTML = "";
+    audioUrls.forEach((audioUrl, idx) => {
+      const card = document.createElement("div");
+      card.className = "variant-card";
+      const title = document.createElement("h3");
+      title.textContent = "Variant " + (idx + 1);
+      const player = document.createElement("audio");
+      player.controls = true;
+      player.preload = "metadata";
+      player.src = audioUrl;
+      const actions = document.createElement("div");
+      actions.className = "variant-actions";
+      const dl = document.createElement("a");
+      dl.className = "download-btn";
+      dl.href = downloadUrls[idx];
+      dl.download = "";
+      dl.textContent = "⬇ Download FLAC";
+      actions.appendChild(dl);
+      card.appendChild(title);
+      card.appendChild(player);
+      card.appendChild(actions);
+      outputsPanel.appendChild(card);
+    });
+    outputsPanel.classList.add("visible");
+  }
+
   function startPolling(jobId) {
     pollTimer = setInterval(async () => {
       try {
@@ -475,8 +538,9 @@
         if (data.status === "done") {
           stopPolling();
           progressNote.style.display = "none";
-          downloadLink.href = data.download_url;
-          downloadLink.style.display = "inline-flex";
+          if (data.audio_urls && data.audio_urls.length) {
+            showOutputs(data.audio_urls, data.download_urls || []);
+          }
           submitBtn.disabled = false;
         } else if (data.status === "failed") {
           stopPolling();
@@ -496,7 +560,7 @@
     stopPolling();
 
     // Reset status panel
-    downloadLink.style.display = "none";
+    clearOutputs();
     errorBox.style.display = "none";
     errorBox.textContent = "";
     progressNote.style.display = "block";

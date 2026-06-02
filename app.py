@@ -39,14 +39,13 @@ def _make_runner(store: JobStore):
         store: The shared JobStore (used only for output-dir resolution here).
 
     Returns:
-        Callable ``(job) -> output_path``.
+        Callable ``(job) -> list[output_path]``.
     """
 
     def runner(job):
         from acestep.cover_api import handler_setup, pipeline
 
         output_dir = os.environ.get("COVER_API_OUTPUT_DIR", "data/output/cover_api")
-        out_path = os.path.join(output_dir, f"{job.job_id}.flac")
 
         params = pipeline.CoverParams(**job.params)
         handler = handler_setup.get_handler(config_path=params.model)
@@ -56,7 +55,8 @@ def _make_runner(store: JobStore):
             params=params,
             instrumental_path=job.instrumental_path,
             bass_path=job.bass_path,
-            out_path=out_path,
+            output_dir=output_dir,
+            job_id=job.job_id,
         )
 
     return runner
