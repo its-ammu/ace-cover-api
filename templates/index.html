@@ -386,7 +386,8 @@
             {% for m in allowed_models %}
             <option value="{{ m }}"{% if m == "acestep-v15-xl-sft" %} selected{% endif %}>
               {%- if m == "acestep-v15-xl-sft" %}XL SFT (High Quality)
-              {%- elif m == "acestep-v15-turbo" %}Turbo (Faster)
+              {%- elif m == "acestep-v15-xl-turbo" %}XL Turbo (Fast + High Quality)
+              {%- elif m == "acestep-v15-turbo" %}Turbo 2B (Faster, lower VRAM)
               {%- else %}{{ m }}
               {%- endif %}
             </option>

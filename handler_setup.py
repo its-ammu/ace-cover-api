@@ -32,7 +32,7 @@ from loguru import logger
 _handlers: dict[str, "AceStepHandler"] = {}  # type: ignore[name-defined]  # noqa: F821
 _lock = threading.Lock()
 
-ALLOWED_MODELS = ("acestep-v15-xl-sft", "acestep-v15-turbo")
+ALLOWED_MODELS = ("acestep-v15-xl-sft", "acestep-v15-xl-turbo", "acestep-v15-turbo")
 _DEFAULT_CONFIG_PATH = "acestep-v15-xl-sft"
 _DEFAULT_LORA_PATH = "checkpoints/lora_sliders/digital-acoustic"
 _DEFAULT_LORA_REPO = "Xanthius/Ace-Step-1.5-XL-Concept-Sliders"

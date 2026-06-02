@@ -40,7 +40,8 @@ class CoverParams:
         audio_cover_strength: Audio conditioning strength (0–1).
         lora_scale: digital-acoustic LoRA influence (0–1).
         seed: Optional RNG seed for reproducible results.
-        model: DiT checkpoint name (``"acestep-v15-xl-sft"`` or ``"acestep-v15-turbo"``).
+        model: DiT checkpoint name (``acestep-v15-xl-sft``, ``acestep-v15-xl-turbo``,
+            or ``acestep-v15-turbo``).
         no_fsq: When ``True``, uses ``task_type="cover-nofsq"`` which skips
             FSQ-quantized source conditioning for more creative output.
     """
